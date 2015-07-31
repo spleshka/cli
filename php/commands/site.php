@@ -541,6 +541,52 @@ class Site_Command extends Terminus_Command {
    }
 
   /**
+   * Init dev to test or test to live
+   *
+   * ## OPTIONS
+   *
+   * [--site=<site>]
+   * : Site to use
+   *
+   * [--env]
+   * : Environment you want to initialize
+   *
+   * @subcommand init-env
+   */
+   public function init_env($args, $assoc_args) {
+     $environments = array('dev', 'test', 'live');
+     $site = SiteFactory::instance(Input::site($assoc_args));
+     $env = $site->environment(Input::env(
+       $assoc_args,
+       'env',
+       'Choose environment you want to initialize',
+       array('test', 'live')
+     ));
+     $response = $env->convergeEnvironment();
+     $result = $this->waitOnWorkflow(
+       'sites',
+       $site->getId(),
+       $response['data']->id
+     );
+
+     $from_env = array_search($env->getName(), $environments) - 1;
+     $deploy_args = array(
+       'site'   => $site,
+       'env'    => $env->getName(),
+       'from'   => $environments[$from_env],
+       'note'   => 'Initial Commit',
+       'method' => 'deploy_code'
+     );
+     $result = $this->_deploy($deploy_args, $assoc_args);
+     //Deploy code instead?
+
+     if($result) {
+       \Terminus::success("Initialization complete!");
+     }
+     return true;
+   }
+
+  /**
    * Clone dev to test or test to live
    *
    * ## OPTIONS
@@ -700,42 +746,53 @@ class Site_Command extends Terminus_Command {
     * [--updatedb]
     * : (Drupal only) run update.php after deploy?
     *
-    *
     * [--note=<note>]
     * : deploy log message
     *
     */
    public function deploy($args, $assoc_args) {
-     $site = SiteFactory::instance( Input::site( $assoc_args ) );
-     $env = Input::env($assoc_args);
+     $site = SiteFactory::instance(Input::site($assoc_args));
+     $env  = Input::env($assoc_args);
      $from = Input::env($assoc_args, 'from', "Choose environment you want to deploy from");
-     if (!isset($assoc_args['note'])) {
+     if(!isset($assoc_args['note'])) {
        $note = Terminus::prompt("Custom note for the Deploy Log", array(), "Deploy from Terminus 2.0");
      } else {
        $note = $assoc_args['note'];
      }
+     $deploy_args = array(
+      'site' => $site,
+      'env' => $env,
+      'from' => $from,
+      'note' => $note
+     );
 
+     $result = $this->_deploy($deploy_args, $assoc_args);
+
+     if($result) {
+       \Terminus::success("Woot! Code deployed to %s", array($env));
+     }
+   }
+
+   private function _deploy($args, $assoc_args) {
      $cc = $updatedb = 0;
-     if (array_key_exists('cc',$assoc_args)) {
+     if(array_key_exists('cc', $assoc_args)) {
        $cc = 1;
      }
-     if (array_key_exists('updatedb',$assoc_args)) {
+     if(array_key_exists('updatedb', $assoc_args)) {
        $updatedb = 1;
      }
 
      $params = array(
-       'updatedb' => $updatedb,
-       'cc' => $cc,
-       'from' => $from,
-       'annotation' => $note
+       'updatedb'   => $updatedb,
+       'cc'         => $cc,
+       'from'       => $args['from'],
+       'annotation' => $args['note']
      );
 
-     $deploy = new Deploy($site->environment($env), $params);
+     $deploy = new Deploy($args['site']->environment($args['env']), $params);
      $response = $deploy->run();
-     $result = $this->waitOnWorkflow('sites', $site->getId(), $response->id);
-     if ($result) {
-       \Terminus::success("Woot! Code deployed to %s", array($env));
-     }
+     $result = $this->waitOnWorkflow('sites', $args['site']->getId(), $response->id);
+     return $result;
    }
 
   /**

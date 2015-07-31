@@ -332,4 +332,25 @@ class Environment {
     }
     return $element;
   }
+
+  /**
+   * Converge the given environment
+   *
+   * @return [array] Data from the request
+   */
+  public function convergeEnvironment() {
+    $path = sprintf("environments/%s/converge", $this->name);
+    $options = array('headers' => array('Content-type' => 'application/json'));
+    $request = \Terminus_Command::request('sites', $this->site->getId(), $path, 'POST', $options);
+    return $request;
+  }
+
+  /**
+   * Returns the environment's name
+   *
+   * @return [string] $this->name
+   */
+  public function getName() {
+    return $this->name;
+  }
 }
